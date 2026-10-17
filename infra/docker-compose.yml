@@ -1,0 +1,20 @@
+# Local development infrastructure. PostgreSQL only; apps run on the host.
+name: alerta-conductor
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-alerta}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-alerta_dev_only}
+      POSTGRES_DB: ${POSTGRES_DB:-alerta}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-alerta} -d $${POSTGRES_DB:-alerta}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+volumes:
+  pgdata:

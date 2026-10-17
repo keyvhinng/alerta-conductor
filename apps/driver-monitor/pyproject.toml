@@ -1,0 +1,33 @@
+[project]
+name = "driver-monitor"
+version = "0.1.0"
+description = "Alerta Conductor edge driver monitor (local camera + telemetry -> structured events)"
+requires-python = ">=3.12"
+dependencies = [
+  "numpy>=2.0",
+  "opencv-python-headless>=4.10",
+  "mediapipe>=0.10",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.scripts]
+driver-monitor = "driver_monitor.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/driver_monitor"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

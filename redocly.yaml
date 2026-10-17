@@ -1,0 +1,8 @@
+extends:
+  - recommended
+rules:
+  # Authentication is an unresolved decision (docs/product/prd.md, open questions).
+  security-defined: off
+  # Draft contract: per-operation 4xx responses are covered by the shared `default` Error response.
+  operation-4xx-response: off
+  no-server-example.com: off

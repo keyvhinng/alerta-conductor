@@ -1,0 +1,19 @@
+schema: spec-driven
+
+context: |
+  Alerta Conductor: preventive driver-safety platform (pre-shift fatigue risk + in-shift monitoring).
+  Decision support only; never a medical determination. Supervisors make final decisions.
+  Read AGENTS.md, docs/product/prd.md, docs/architecture/overview.md and docs/domain/* first.
+  Risk thresholds are NOT approved; never invent them. Mark simulated data explicitly.
+  Raw camera video never leaves the driver's device. Technical docs in English; UI copy in Spanish.
+
+rules:
+  proposal:
+    - State what is out of scope and which PRD requirement IDs (FR-n) are addressed
+    - List unresolved decisions explicitly instead of assuming them
+  specs:
+    - Use GIVEN/WHEN/THEN scenarios; do not include implementation details
+  design:
+    - Link to ADRs; propose a new ADR for any architectural change
+  tasks:
+    - Every task states how it is verified; keep contracts/ and docs in sync

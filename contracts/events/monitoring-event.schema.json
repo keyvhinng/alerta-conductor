@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://alerta-conductor.example/contracts/events/monitoring-event.schema.json",
+  "title": "MonitoringEvent",
+  "description": "PROPOSED. Structured observation emitted by the driver monitor. Contains no images or video. The backend owns risk decisions; the monitor only reports observations.",
+  "type": "object",
+  "required": ["eventId", "shiftId", "sequence", "kind", "occurredAt", "source", "simulated"],
+  "additionalProperties": false,
+  "properties": {
+    "eventId": { "type": "string", "format": "uuid", "description": "Idempotency key; duplicates are ignored." },
+    "shiftId": { "type": "string" },
+    "sequence": { "type": "integer", "minimum": 1, "description": "Monotonic per shift; used for ordering, gap detection and dedup." },
+    "kind": {
+      "type": "string",
+      "enum": ["heartbeat", "eyes_closed_duration", "yawn", "head_pose_deviation", "face_not_detected", "camera_unavailable", "telemetry_unavailable", "telemetry_sample"],
+      "description": "Initial proposed set; extend via OpenSpec change."
+    },
+    "occurredAt": { "type": "string", "format": "date-time", "description": "UTC, from the device clock." },
+    "source": { "type": "string", "enum": ["camera", "telemetry", "mock"] },
+    "simulated": { "type": "boolean", "description": "True when produced by a mock/simulator." },
+    "value": { "type": ["number", "null"], "description": "Kind-specific measurement (e.g. duration seconds, speed km/h)." },
+    "confidence": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
+  }
+}

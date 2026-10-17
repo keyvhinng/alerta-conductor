@@ -1,0 +1,513 @@
+openapi: 3.1.0
+info:
+  title: Alerta Conductor API
+  version: 0.1.0-draft
+  description: |
+    PROPOSED contract (draft). Only `GET /v1/health` is implemented in the bootstrap;
+    every other operation is marked `x-status: proposed` and requires an approved
+    OpenSpec change before implementation. See docs/architecture/overview.md.
+
+    Conventions:
+    - Prefix `/v1`. Breaking changes require `/v2`.
+    - IDs are UUIDs (strings). Timestamps are RFC 3339 UTC (`...Z`).
+    - Lists use cursor pagination (`limit`, `cursor` -> `nextCursor`).
+    - Errors use `Error` (RFC 9457-inspired, `application/json`).
+    - Any record that may come from a simulator carries `dataOrigin`.
+servers:
+  - url: http://localhost:8080
+    description: Local development
+tags:
+  - { name: system }
+  - { name: drivers }
+  - { name: wearables }
+  - { name: shifts }
+  - { name: monitoring }
+  - { name: alerts }
+  - { name: incidents }
+paths:
+  /v1/health:
+    get:
+      tags: [system]
+      operationId: getHealth
+      x-status: implemented
+      summary: Liveness check
+      responses:
+        "200":
+          description: Service is up
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+  /v1/drivers:
+    get:
+      tags: [drivers]
+      operationId: listDrivers
+      x-status: proposed
+      summary: List registered drivers
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: Page of drivers
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DriverPage" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/drivers/{driverId}:
+    get:
+      tags: [drivers]
+      operationId: getDriver
+      x-status: proposed
+      summary: Get a driver
+      parameters:
+        - $ref: "#/components/parameters/DriverId"
+      responses:
+        "200":
+          description: Driver
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Driver" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/drivers/{driverId}/sleep-records:
+    post:
+      tags: [wearables]
+      operationId: ingestSleepRecords
+      x-status: proposed
+      summary: Ingest sleep/recovery records (idempotent per sourceRecordId)
+      parameters:
+        - $ref: "#/components/parameters/DriverId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SleepRecordBatch" }
+      responses:
+        "202":
+          description: Accepted (duplicates ignored)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IngestResult" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/shifts:
+    get:
+      tags: [shifts]
+      operationId: listShifts
+      x-status: proposed
+      summary: List shifts
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+        - { name: state, in: query, schema: { $ref: "#/components/schemas/ShiftState" } }
+        - { name: driverId, in: query, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Page of shifts
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShiftPage" }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      tags: [shifts]
+      operationId: createShift
+      x-status: proposed
+      summary: Plan a shift; starts in `pending_assessment`
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateShift" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Shift" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/shifts/{shiftId}:
+    get:
+      tags: [shifts]
+      operationId: getShift
+      x-status: proposed
+      summary: Get a shift
+      parameters:
+        - $ref: "#/components/parameters/ShiftId"
+      responses:
+        "200":
+          description: Shift
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Shift" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/shifts/{shiftId}/assessment:
+    post:
+      tags: [shifts]
+      operationId: runPreShiftAssessment
+      x-status: proposed
+      summary: Compute (or recompute) the pre-shift assessment; moves shift to `awaiting_decision`
+      parameters:
+        - $ref: "#/components/parameters/ShiftId"
+      responses:
+        "200":
+          description: Assessment
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RiskAssessment" }
+        default: { $ref: "#/components/responses/Error" }
+    get:
+      tags: [shifts]
+      operationId: getPreShiftAssessment
+      x-status: proposed
+      summary: Get the latest pre-shift assessment
+      parameters:
+        - $ref: "#/components/parameters/ShiftId"
+      responses:
+        "200":
+          description: Latest assessment
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RiskAssessment" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/shifts/{shiftId}/decision:
+    post:
+      tags: [shifts]
+      operationId: recordShiftDecision
+      x-status: proposed
+      summary: Supervisor authorizes or rejects. The supervisor decision is final.
+      parameters:
+        - $ref: "#/components/parameters/ShiftId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ShiftDecisionRequest" }
+      responses:
+        "200":
+          description: Updated shift
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Shift" }
+        "409":
+          description: Invalid state transition
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/shifts/{shiftId}/start:
+    post:
+      tags: [shifts]
+      operationId: startShift
+      x-status: proposed
+      summary: Driver monitor starts an `authorized` shift
+      parameters:
+        - $ref: "#/components/parameters/ShiftId"
+      responses:
+        "200":
+          description: Active shift
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Shift" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/shifts/{shiftId}/complete:
+    post:
+      tags: [shifts]
+      operationId: completeShift
+      x-status: proposed
+      summary: Complete an active shift
+      parameters:
+        - $ref: "#/components/parameters/ShiftId"
+      responses:
+        "200":
+          description: Completed shift
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Shift" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/shifts/{shiftId}/events:
+    post:
+      tags: [monitoring]
+      operationId: ingestMonitoringEvents
+      x-status: proposed
+      summary: Driver monitor posts structured events (idempotent per eventId)
+      description: Event payload schema is defined in contracts/events/monitoring-event.schema.json.
+      parameters:
+        - $ref: "#/components/parameters/ShiftId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MonitoringEventBatch" }
+      responses:
+        "202":
+          description: Accepted (duplicates ignored)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IngestResult" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/alerts:
+    get:
+      tags: [alerts]
+      operationId: listAlerts
+      x-status: proposed
+      summary: List alerts
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/AlertStatus" } }
+      responses:
+        "200":
+          description: Page of alerts
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AlertPage" }
+        default: { $ref: "#/components/responses/Error" }
+  /v1/alerts/stream:
+    get:
+      tags: [alerts]
+      operationId: streamAlerts
+      x-status: proposed
+      summary: Server-Sent Events stream for dashboard notifications
+      description: |
+        `text/event-stream`. Event names: `alert.created`, `alert.updated`, `shift.updated`.
+        `data` is JSON (`Alert` / `Shift`). Clients reconnect with `Last-Event-ID`.
+      responses:
+        "200":
+          description: Event stream
+          content:
+            text/event-stream:
+              schema: { type: string }
+  /v1/incidents/{incidentId}/acknowledge:
+    post:
+      tags: [incidents]
+      operationId: acknowledgeIncident
+      x-status: proposed
+      summary: Supervisor acknowledges an incident
+      parameters:
+        - { name: incidentId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                note: { type: string, maxLength: 1000 }
+      responses:
+        "200":
+          description: Acknowledged incident
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Incident" }
+        default: { $ref: "#/components/responses/Error" }
+components:
+  parameters:
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+    Cursor:
+      name: cursor
+      in: query
+      schema: { type: string }
+    DriverId:
+      name: driverId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ShiftId:
+      name: shiftId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Health:
+      type: object
+      required: [status, service, simulationMode, time]
+      properties:
+        status: { type: string, enum: [ok] }
+        service: { type: string }
+        simulationMode: { type: boolean }
+        time: { type: string, format: date-time }
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Stable machine-readable code, e.g. `invalid_transition`, `validation_failed`, `not_found`.
+        message: { type: string }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              issue: { type: string }
+        requestId: { type: string }
+    DataOrigin:
+      type: string
+      enum: [real, simulated, imported, manual]
+      description: Provenance of the data. UIs must visibly flag anything not `real`.
+    Page:
+      type: object
+      properties:
+        nextCursor: { type: [string, "null"] }
+    Driver:
+      type: object
+      required: [id, displayName, dataOrigin]
+      properties:
+        id: { type: string, format: uuid }
+        displayName: { type: string }
+        dataOrigin: { $ref: "#/components/schemas/DataOrigin" }
+    DriverPage:
+      allOf:
+        - $ref: "#/components/schemas/Page"
+        - type: object
+          required: [items]
+          properties:
+            items: { type: array, items: { $ref: "#/components/schemas/Driver" } }
+    SleepRecord:
+      type: object
+      required: [sourceRecordId, startedAt, endedAt, dataOrigin]
+      properties:
+        sourceRecordId: { type: string, description: Idempotency key from the source. }
+        startedAt: { type: string, format: date-time }
+        endedAt: { type: string, format: date-time }
+        totalSleepMinutes: { type: [integer, "null"], minimum: 0 }
+        awakeMinutes: { type: [integer, "null"], minimum: 0 }
+        restingHeartRateBpm: { type: [integer, "null"], minimum: 0 }
+        provider: { type: string, description: "e.g. simulator, manual, csv-import" }
+        dataOrigin: { $ref: "#/components/schemas/DataOrigin" }
+    SleepRecordBatch:
+      type: object
+      required: [records]
+      properties:
+        records:
+          type: array
+          maxItems: 100
+          items: { $ref: "#/components/schemas/SleepRecord" }
+    IngestResult:
+      type: object
+      required: [accepted, duplicates]
+      properties:
+        accepted: { type: integer }
+        duplicates: { type: integer }
+    ShiftState:
+      type: string
+      enum: [pending_assessment, awaiting_decision, authorized, rejected, active, completed]
+    CreateShift:
+      type: object
+      required: [driverId, vehicleId, plannedStart]
+      properties:
+        driverId: { type: string, format: uuid }
+        vehicleId: { type: string, format: uuid }
+        plannedStart: { type: string, format: date-time }
+    Shift:
+      type: object
+      required: [id, driverId, state, plannedStart, dataOrigin]
+      properties:
+        id: { type: string, format: uuid }
+        driverId: { type: string, format: uuid }
+        vehicleId: { type: string, format: uuid }
+        state: { $ref: "#/components/schemas/ShiftState" }
+        plannedStart: { type: string, format: date-time }
+        startedAt: { type: [string, "null"], format: date-time }
+        endedAt: { type: [string, "null"], format: date-time }
+        dataOrigin: { $ref: "#/components/schemas/DataOrigin" }
+    ShiftPage:
+      allOf:
+        - $ref: "#/components/schemas/Page"
+        - type: object
+          required: [items]
+          properties:
+            items: { type: array, items: { $ref: "#/components/schemas/Shift" } }
+    RiskLevel:
+      type: string
+      enum: [low, moderate, high, insufficient_data]
+      description: |
+        Decision-support label only. Level boundaries are NOT yet approved
+        (see docs/domain/risk-assessment.md); they are configuration, not contract.
+    Recommendation:
+      type: string
+      enum: [authorize, review, withhold]
+    RiskAssessment:
+      type: object
+      required: [id, shiftId, level, recommendation, factors, missingInputs, algorithmVersion, computedAt, dataOrigin]
+      properties:
+        id: { type: string, format: uuid }
+        shiftId: { type: string, format: uuid }
+        level: { $ref: "#/components/schemas/RiskLevel" }
+        recommendation: { $ref: "#/components/schemas/Recommendation" }
+        factors:
+          type: array
+          description: Explainable contributions to the result.
+          items:
+            type: object
+            required: [code, description]
+            properties:
+              code: { type: string }
+              description: { type: string }
+              observedValue: { type: [number, "null"] }
+        missingInputs:
+          type: array
+          items: { type: string }
+          description: Inputs that were unavailable. Never silently treated as "fine".
+        algorithmVersion: { type: string }
+        computedAt: { type: string, format: date-time }
+        dataOrigin: { $ref: "#/components/schemas/DataOrigin" }
+        disclaimer:
+          type: string
+          description: Fixed text stating this is decision support, not a medical determination.
+    ShiftDecisionRequest:
+      type: object
+      required: [decision]
+      properties:
+        decision: { type: string, enum: [authorize, reject] }
+        reason: { type: string, maxLength: 1000, description: Required when rejecting or overriding a `withhold` recommendation. }
+    MonitoringEventBatch:
+      type: object
+      required: [events]
+      properties:
+        events:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "./events/monitoring-event.schema.json"
+    AlertStatus:
+      type: string
+      enum: [open, acknowledged, resolved]
+    Alert:
+      type: object
+      required: [id, shiftId, driverId, severity, status, createdAt, dataOrigin]
+      properties:
+        id: { type: string, format: uuid }
+        shiftId: { type: string, format: uuid }
+        driverId: { type: string, format: uuid }
+        incidentId: { type: [string, "null"], format: uuid }
+        severity: { type: string, enum: [info, warning, critical] }
+        reasonCodes: { type: array, items: { type: string } }
+        status: { $ref: "#/components/schemas/AlertStatus" }
+        createdAt: { type: string, format: date-time }
+        dataOrigin: { $ref: "#/components/schemas/DataOrigin" }
+    AlertPage:
+      allOf:
+        - $ref: "#/components/schemas/Page"
+        - type: object
+          required: [items]
+          properties:
+            items: { type: array, items: { $ref: "#/components/schemas/Alert" } }
+    Incident:
+      type: object
+      required: [id, shiftId, status, openedAt]
+      properties:
+        id: { type: string, format: uuid }
+        shiftId: { type: string, format: uuid }
+        status: { type: string, enum: [open, acknowledged, closed] }
+        openedAt: { type: string, format: date-time }
+        acknowledgedAt: { type: [string, "null"], format: date-time }
+        acknowledgedBy: { type: [string, "null"], format: uuid }
+        note: { type: [string, "null"] }
